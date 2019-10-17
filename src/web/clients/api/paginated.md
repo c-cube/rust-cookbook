@@ -14,13 +14,14 @@ use reqwest::Error;
 
 #[derive(Deserialize)]
 struct ApiResponse {
-    dependencies: Vec<Dependency>,
+    versions: Vec<Crate>,
     meta: Meta,
 }
 
 #[derive(Deserialize)]
-struct Dependency {
-    crate_id: String,
+struct Crate {
+    #[serde(rename = "crate")]
+    name: String,
 }
 
 #[derive(Deserialize)]
@@ -30,7 +31,7 @@ struct Meta {
 
 struct ReverseDependencies {
     crate_id: String,
-    dependencies: <Vec<Dependency> as IntoIterator>::IntoIter,
+    dependencies: <Vec<Crate> as IntoIterator>::IntoIter,
     client: reqwest::Client,
     page: u32,
     per_page: u32,
@@ -40,16 +41,16 @@ struct ReverseDependencies {
 impl ReverseDependencies {
     fn of(crate_id: &str) -> Result<Self, Error> {
         Ok(ReverseDependencies {
-               crate_id: crate_id.to_owned(),
-               dependencies: vec![].into_iter(),
-               client: reqwest::Client::new(),
-               page: 0,
-               per_page: 100,
-               total: 0,
-           })
+            crate_id: crate_id.to_owned(),
+            dependencies: vec![].into_iter(),
+            client: reqwest::Client::new(),
+            page: 0,
+            per_page: 100,
+            total: 0,
+        })
     }
 
-    fn try_next(&mut self) -> Result<Option<Dependency>, Error> {
+    fn try_next(&mut self) -> Result<Option<Crate>, Error> {
         if let Some(dep) = self.dependencies.next() {
             return Ok(Some(dep));
         }
@@ -59,20 +60,20 @@ impl ReverseDependencies {
         }
 
         self.page += 1;
-        let url = format!("https://crates.io/api/v1/crates/{}/reverse_dependencies?page={}&per_page={}",
-                          self.crate_id,
-                          self.page,
-                          self.per_page);
+        let url = format!(
+            "https://crates.io/api/v1/crates/{}/reverse_dependencies?page={}&per_page={}",
+            self.crate_id, self.page, self.per_page
+        );
 
         let response = self.client.get(&url).send()?.json::<ApiResponse>()?;
-        self.dependencies = response.dependencies.into_iter();
+        self.dependencies = response.versions.into_iter();
         self.total = response.meta.total;
         Ok(self.dependencies.next())
     }
 }
 
 impl Iterator for ReverseDependencies {
-    type Item = Result<Dependency, Error>;
+    type Item = Result<Crate, Error>;
 
     fn next(&mut self) -> Option<Self::Item> {
         match self.try_next() {
@@ -85,7 +86,7 @@ impl Iterator for ReverseDependencies {
 
 fn main() -> Result<(), Error> {
     for dep in ReverseDependencies::of("serde")? {
-        println!("reverse dependency: {}", dep?.crate_id);
+        println!("reverse dependency: {}", dep?.name);
     }
     Ok(())
 }
